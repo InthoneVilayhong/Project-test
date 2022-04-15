@@ -183,65 +183,67 @@ router.get("/offers", identification, async (req, res) => {
     console.log("/offers");
     console.log(req.query);
     try {
-        if (req.query.title && req.query.sort === "price-asc") {
-            const offerToShow = await Offer.find({
-                product_name: req.query.title,
-            }).sort({ product_price: 1 });
-            res.json(offerToShow);
-        } else if (req.query.title && req.query.sort === "price-desc") {
-            const offerToShow = await Offer.find({
-                product_name: req.query.title,
-            }).sort({ product_price: -1 });
-            res.json(offerToShow);
-        } else if (req.query.title) {
-            const offerToShow = await Offer.find({
-                product_name: req.query.title,
-            });
-            res.json(offerToShow);
-        } else if (req.query.page === "1") {
-            const offerToShow = await Offer.find().limit(2);
-            res.json(offerToShow);
-        } else if (req.query.page && req.query.page !== "1") {
-            let toSkip = Number(req.query.page) - 1;
-            console.log(toSkip);
-            const offerToShow = await Offer.find()
-                .limit(2)
-                .skip(2 * toSkip);
-            res.json(offerToShow);
-        } else if (req.query.priceMax) {
-            const offerToShow = await Offer.find({
-                product_price: { $lte: req.query.priceMax },
-            });
-            res.json(offerToShow);
-        } else if (req.query.priceMin) {
-            const offerToShow = await Offer.find({
-                product_price: { $gte: req.query.priceMin },
-            });
-            res.json(offerToShow);
-        } else if (req.query.title && req.query.priceMax) {
-            const offerToShow = await Offer.find({
-                title: req.query.title,
-                price: { $lte: req.query.priceMax },
-            });
-            res.json(offerToShow);
-        } else if (req.query.priceMin && req.query.priceMax) {
-            const offerToShow = await Offer.find({
-                product_price: {
-                    $lte: Number(req.query.priceMax),
-                    $gte: Number(req.query.priceMin),
-                },
-            });
-            res.json(offerToShow);
-        } else if (req.query.sort === "price-desc") {
-            const offerToShow = await Offer.find().sort({ product_price: -1 });
-            res.json(offerToShow);
-        } else if (req.query.sort === "price-asc") {
-            const offerToShow = await Offer.find().sort({ product_price: 1 });
-            res.json(offerToShow);
-        } else {
-            const offerToShow = await Offer.find().limit(2);
-            res.json(offerToShow);
+        const filtersObject = {};
+
+        //gestion du Title
+        if (req.query.title) {
+            filtersObject.product_name = new RegExp(req.query.title, "i");
         }
+
+        if (req.query.priceMin) {
+            filtersObject.product_price = { $gte: req.query.priceMin };
+        }
+
+        //si j'ai déjà une clé product_price dans mon objet objectFilters
+        if (req.query.priceMax) {
+            if (filtersObject.product_price) {
+                filtersObject.product_price.$lte = req.query.priceMax;
+            } else {
+                filtersObject.product_price = {
+                    $lte: req.query.priceMax,
+                };
+            }
+        }
+        //gestion du tri avec l'objet sortObject
+        const sortObject = {};
+        if (req.query.sort === "price-desc") {
+            sortObject.product_price = "desc";
+        } else if (req.query.sort === "price-asc") {
+            sortObject.product_price = "asc";
+        }
+
+        // console.log(filtersObject);
+
+        //gestion de la pagination
+        // On a par défaut 5 annonces par page
+        //Si ma page est égale à 1 je devrais skip 0 annonces
+        //Si ma page est égale à 2 je devrais skip 5 annonces
+        //Si ma page est égale à 4 je devrais skip 15 annonces
+
+        //(1-1) * 5 = skip 0 ==> PAGE 1
+        //(2-1) * 5 = SKIP 5 ==> PAGE 2
+        //(4-1) * 5 = SKIP 15 ==> PAGE 4
+        // ==> (PAGE - 1) * LIMIT
+
+        let limit = 3;
+        if (req.query.limit) {
+            limit = req.query.limit;
+        }
+
+        let page = 1;
+        if (req.query.page) {
+            page = req.query.page;
+        }
+
+        const offers = await Offer.find(filtersObject)
+            .sort(sortObject)
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .select("product_name product_price");
+
+        const count = await Offer.countDocuments(filtersObject);
+
+        res.json({ count: count, offers: offers });
     } catch (error) {
         res.status(400).json(error.message);
     }
